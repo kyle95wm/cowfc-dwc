@@ -149,10 +149,22 @@ class GamespyDatabase(object):
                         " data TEXT)")
             tx.nonquery("CREATE TABLE IF NOT EXISTS nas_logins"
                         " (userid TEXT, authtoken TEXT, data TEXT)")
-            tx.nonquery("CREATE TABLE IF NOT EXISTS banned"
-                        " (gameid TEXT, ipaddr TEXT)")
-            tx.nonquery("CREATE TABLE IF NOT EXISTS pending (macadr TEXT)")
-            tx.nonquery("CREATE TABLE IF NOT EXISTS registered (macadr TEXT)")
+            tx.nonquery("CREATE TABLE IF NOT EXISTS ip_banned"
+                        " (ipaddr TEXT, timestamp INT(11),"
+                        " reason TEXT, ubtime INT(11))")
+            tx.nonquery("CREATE TABLE IF NOT EXISTS console_macadr_banned"
+                        " (macadr TEXT, timestamp INT(11),"
+                        " reason TEXT, ubtime INT(11))")
+            tx.nonquery("CREATE TABLE IF NOT EXISTS console_csnum_banned"
+                        " (csnum TEXT)")
+            tx.nonquery("CREATE TABLE IF NOT EXISTS console_cfc_banned"
+                        " (cfc TEXT)")
+            tx.nonquery("CREATE TABLE IF NOT EXISTS pending"
+                        " (macadr TEXT, csnum TEXT)")
+            tx.nonquery("CREATE TABLE IF NOT EXISTS registered"
+                        " (macadr TEXT, csnum TEXT)")
+            tx.nonquery("CREATE TABLE IF NOT EXISTS allowed_games"
+                        " (gamecd TEXT)")
 
             # Create some indexes for performance.
             tx.nonquery("CREATE UNIQUE INDEX IF NOT EXISTS"
@@ -498,21 +510,70 @@ class GamespyDatabase(object):
         else:
             return json.loads(r["data"])
 
-    def is_banned(self, postdata):
+    def is_ip_banned(self, postdata):
         with Transaction(self.conn) as tx:
             row = tx.queryone(
-                "SELECT COUNT(*) FROM banned WHERE gameid = ? AND ipaddr = ?",
-                (postdata['gamecd'][:-1], postdata['ipaddr'])
+                "SELECT COUNT(*) FROM ip_banned WHERE ipaddr = ?"
+                "AND ubtime > ?",
+                (postdata['ipaddr'], time.time(),)
             )
         return int(row[0]) > 0
 
-    def pending(self, postdata):
-        with Transaction(self.conn) as tx:
-            row = tx.queryone(
-                "SELECT COUNT(*) FROM pending WHERE macadr = ?",
-                (postdata['macadr'],)
-            )
+    def is_console_macadr_banned(self, postdata):
+        if 'macadr' in postdata:
+            with Transaction(self.conn) as tx:
+                row = tx.queryone(
+                   "SELECT COUNT(*) FROM console_macadr_banned"
+                   "WHERE macadr = ? AND ubtime > ?",
+                   (postdata['macadr'], time.time(),)
+                )
             return int(row[0]) > 0
+        else:
+            return False
+
+    def is_console_csnum_banned(self, postdata):
+        if 'csnum' in postdata:
+            with Transaction(self.conn) as tx:
+                row = tx.queryone(
+                   "SELECT COUNT(*) FROM console_csnum_banned WHERE csnum = ?",
+                   (postdata['csnum'],)
+                )
+            return int(row[0]) > 0
+        else:
+            return False
+
+    def is_console_cfc_banned(self, postdata):
+        if 'cfc' in postdata:
+            with Transaction(self.conn) as tx:
+                row = tx.queryone(
+                   "SELECT COUNT(*) FROM console_cfc_banned WHERE cfc = ?",
+                   (postdata['cfc'],)
+                )
+            return int(row[0]) > 0
+        else:
+            return False
+
+    def pending(self, postdata):
+        if 'csnum' in postdata:
+            with Transaction(self.conn) as tx:
+                row = tx.queryone(
+                    "SELECT COUNT(*) FROM pending WHERE macadr = ?"
+                    "AND csnum = ?",
+                    (postdata['macadr'], postdata['csnum'])
+                )
+                result = int(row[0])
+                if result == 0:
+                    tx.nonquery(
+                        "INSERT INTO pending (macadr, csnum) VALUES (?,?)",
+                        (postdata['macadr'], postdata['csnum'])
+                    )
+                    tx.nonquery(
+                        "INSERT INTO registered (macadr, csnum) VALUES (?,?)",
+                        (postdata['macadr'], postdata['csnum'])
+                    )
+                return result > 0
+        else:
+            return False
 
     def registered(self, postdata):
         with Transaction(self.conn) as tx:
@@ -521,6 +582,33 @@ class GamespyDatabase(object):
                 (postdata['macadr'],)
             )
             return int(row[0]) > 0
+
+    def allowed_games(self, postdata):
+        with Transaction(self.conn) as tx:
+            row = tx.queryone(
+                "SELECT COUNT(*) FROM allowed_games WHERE gamecd = ?",
+                (postdata['gamecd'][:3],)
+            )
+            return int(row[0]) > 0
+
+    def console_abuse(self, postdata):
+        if 'csnum' in postdata:
+            with Transaction(self.conn) as tx:
+                row = tx.queryone(
+                    "SELECT COUNT(*) FROM pending WHERE csnum = ?",
+                    (postdata['csnum'],)
+                )
+                row = tx.queryone(
+                    "SELECT COUNT(*) FROM registered WHERE csnum = ?",
+                    (postdata['csnum'],)
+                )
+                result = int(row[0])
+                if result > 1:
+                    return True
+                else:
+                    return False
+        else:
+            return False
 
     def get_next_available_userid(self):
         with Transaction(self.conn) as tx:

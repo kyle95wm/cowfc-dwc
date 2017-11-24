@@ -54,7 +54,7 @@ def handle_ac_acctcreate(handler, db, addr, post):
 
     TODO: Test for duplicate accounts.
     """
-    if db.is_banned(post):
+    if db.is_ip_banned(post):
         ret = {
             "retry": "1",
             "returncd": "3913",
@@ -77,29 +77,73 @@ def handle_ac_acctcreate(handler, db, addr, post):
 
 def handle_ac_login(handler, db, addr, post):
     """Handle ac login request."""
-    if db.is_banned(post):
+    if db.is_ip_banned(post):
         ret = {
             "retry": "1",
-            "returncd": "3914",
+            "returncd": "3917",
             "locator": "gamespy.com",
             "reason": "User banned."
         }
         logger.log(logging.DEBUG, "Login denied for banned user %s", str(post))
-    # Un-comment these lines to enable console registration feature
-    # elif not db.pending(post):
-    #     logger.log(logging.DEBUG, "Login denied - Unknown console %s", post)
-    #     ret = {
-    #         "retry": "1",
-    #         "returncd": "3921",
-    #         "locator": "gamespy.com",
-    #     }
-    # elif not db.registered(post):
-    #     logger.log(logging.DEBUG, "Login denied - console pending %s", post)
-    #     ret = {
-    #         "retry": "1",
-    #         "returncd": "3888",
-    #         "locator": "gamespy.com",
-    #     }
+    elif db.is_console_macadr_banned(post):
+        ret = {
+            "retry": "1",
+            "returncd": "3914",
+            "locator": "gamespy.com",
+            "reason": "User's console banned."
+        }
+        logger.log(logging.DEBUG, "Login denied for "
+                                  "banned console %s", str(post))
+    elif db.is_console_cfc_banned(post):
+        ret = {
+            "retry": "1",
+            "returncd": "3915",
+            "locator": "gamespy.com",
+            "reason": "User's console banned."
+        }
+        logger.log(logging.DEBUG, "Login denied "
+                                  "for banned console "
+                                  "friend code %s", str(post))
+    elif db.is_console_csnum_banned(post):
+        ret = {
+            "retry": "1",
+            "returncd": "3915",
+            "locator": "gamespy.com",
+            "reason": "User's console banned."
+        }
+        logger.log(logging.DEBUG, "Login denied for banned console "
+                                  "serial number %s", str(post))
+    elif db.console_abuse(post):
+        ret = {
+            "retry": "1",
+            "returncd": "3915",
+            "locator": "gamespy.com",
+            "reason": "User's console banned due to abuse of MAC address."
+        }
+        logger.log(logging.DEBUG, "Login denied for console "
+                                  "- too many MAC addresses used %s",
+                                  str(post))
+    elif not db.pending(post):
+        logger.log(logging.DEBUG, "Login denied - Unknown console %s", post)
+        ret = {
+            "retry": "1",
+            "returncd": "3921",
+            "locator": "gamespy.com",
+        }
+    elif not db.registered(post):
+        logger.log(logging.DEBUG, "Login denied - console pending %s", post)
+        ret = {
+            "retry": "1",
+            "returncd": "3888",
+            "locator": "gamespy.com",
+        }
+    elif not db.allowed_games(post):
+        logger.log(logging.DEBUG, "Login denied - Game not enabled %s", post)
+        ret = {
+            "retry": "1",
+            "returncd": "3800",
+            "locator": "gamespy.com",
+        }
     else:
         challenge = utils.generate_random_str(8)
         post["challenge"] = challenge
